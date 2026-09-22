@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #050507;
+  --color-accent: #5a67d8;
+  --font-sans: "Inter", sans-serif;
+  
+  --animate-ripple: ripple 1s cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 1; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white font-sans overflow-x-hidden selection:bg-accent/30 selection:text-white;
+  }
+}
+
+@layer utilities {
+  .glass-surface {
+    /* Ultra-transparent base with extremely subtle cool tint */
+    background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(200,220,255,0.01) 100%);
+    
+    /* Complex crystal refraction, soft edge, internal glow, and slight drop shadow */
+    box-shadow: 
+      inset 0px 1px 1px rgba(255, 255, 255, 0.25), /* Top bright rim highlight */
+      inset 0px -1px 3px rgba(255, 255, 255, 0.05), /* Bottom soft rim */
+      inset 0px 0px 40px rgba(180, 200, 255, 0.03), /* Internal soft violet/blue reflection */
+      inset -10px -10px 30px rgba(255, 255, 255, 0.02), /* Internal refraction bounce */
+      0px 15px 40px -10px rgba(0, 0, 0, 0.4); /* Physical floating shadow */
+      
+    /* Thinner, more transparent border to look like light rather than a flat line */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    
+    /* Subtle jelly-like transition */
+    transition: box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-radius 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Refraction blurs - reduced raw blur but added saturation/brightness for a crystal effect */
+  .glass-blur-sm { backdrop-filter: blur(4px) saturate(110%) brightness(1.02); -webkit-backdrop-filter: blur(4px) saturate(110%) brightness(1.02); }
+  .glass-blur-md { backdrop-filter: blur(8px) saturate(115%) brightness(1.05); -webkit-backdrop-filter: blur(8px) saturate(115%) brightness(1.05); }
+  .glass-blur-lg { backdrop-filter: blur(16px) saturate(120%) brightness(1.08); -webkit-backdrop-filter: blur(16px) saturate(120%) brightness(1.08); }
+  .glass-blur-xl { backdrop-filter: blur(24px) saturate(120%) brightness(1.1); -webkit-backdrop-filter: blur(24px) saturate(120%) brightness(1.1); }
+
+  .text-glow {
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #050507;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Lenis smooth scroll required styles */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
