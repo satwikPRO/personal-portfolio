@@ -29,7 +29,7 @@ export const GlassNav: React.FC = () => {
       transition={{ duration: 1, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="fixed top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex justify-center w-max max-w-[96vw]"
     >
-      <LiquidGlass depth={2} className="px-1 md:px-2 py-1 md:py-2 flex justify-center items-center gap-0 md:gap-1 rounded-full">
+      <LiquidGlass depth={2} className="px-1 md:px-2 py-1 md:py-2 flex justify-center items-center gap-0 md:gap-1 rounded-full whitespace-nowrap">
         {navItems.map((item) => (
           <Link key={item.name} to={item.path} className="shrink-0">
             <MagneticButton 
