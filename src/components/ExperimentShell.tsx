@@ -131,10 +131,11 @@ export const ExperimentShell: React.FC<ExperimentShellProps> = ({
         <div className="flex gap-4 pointer-events-auto">
           {labs.map((labId) => {
             const isActive = id === labId;
+            const route = labId === '004' ? 'hand-tracker' : labId;
             return (
               <Link 
                 key={labId}
-                to={`/lab/${labId}`}
+                to={`/lab/${route}`}
                 className={cn(
                   "text-xs font-mono tracking-widest transition-all",
                   isActive ? "text-white font-bold" : "text-white/30 hover:text-white/70"

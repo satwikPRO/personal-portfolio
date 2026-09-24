@@ -17,7 +17,7 @@ import { ContactPage } from './pages/ContactPage';
 const LiquidUI = lazy(() => import('./labs/LiquidUI').then(m => ({ default: m.LiquidUI })));
 const GenerativeVisuals = lazy(() => import('./labs/GenerativeVisuals').then(m => ({ default: m.GenerativeVisuals })));
 const Interactive3D = lazy(() => import('./labs/Interactive3D').then(m => ({ default: m.Interactive3D })));
-const MotionSystem = lazy(() => import('./labs/MotionSystem').then(m => ({ default: m.MotionSystem })));
+const MotionHandTracker = lazy(() => import('./labs/MotionHandTracker').then(m => ({ default: m.MotionHandTracker })));
 
 const AnimatedRoutes = () => {
   const location = useLocation();
@@ -48,9 +48,9 @@ const AnimatedRoutes = () => {
             <Interactive3D />
           </Suspense>
         } />
-        <Route path="/lab/004" element={
+        <Route path="/lab/hand-tracker" element={
           <Suspense fallback={<div className="w-full h-screen bg-transparent" />}>
-            <MotionSystem />
+            <MotionHandTracker />
           </Suspense>
         } />
       </Routes>

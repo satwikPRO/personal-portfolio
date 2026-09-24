@@ -28,8 +28,8 @@ const experiments = [
   },
   { 
     id: '004', 
-    title: 'MOTION SYSTEM', 
-    subtitle: 'Spring-physics based routing.', 
+    title: 'MOTION HAND TRACKER', 
+    subtitle: 'Real-time Computer Vision.', 
     color: 'rgba(249, 115, 22, 0.15)', // Orange
     accent: 'text-orange-400' 
   },
@@ -56,7 +56,7 @@ const LabCard = ({ exp, index }: { exp: typeof experiments[0], index: number }) 
       transition={{ delay: 0.1 * index, duration: 0.8, ease: "easeOut" }}
       className="relative w-full h-full perspective-[1000px]"
     >
-      <Link to={`/lab/${exp.id}`} className="block h-full">
+      <Link to={`/lab/${exp.id === '004' ? 'hand-tracker' : exp.id}`} className="block h-full">
         <motion.div
           ref={cardRef}
           onMouseMove={handleMouseMove}

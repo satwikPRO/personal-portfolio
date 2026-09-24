@@ -9,7 +9,7 @@ const experiments = [
   { id: '001', title: 'LIQUID UI', subtitle: 'Elastic surface deformation.', glowColor: '59, 130, 246', accent: 'text-blue-400' },
   { id: '002', title: 'GENERATIVE VISUALS', subtitle: 'Audio-reactive particle systems.', glowColor: '139, 92, 246', accent: 'text-violet-400' },
   { id: '003', title: 'INTERACTIVE 3D', subtitle: 'Custom shaders in WebGL.', glowColor: '20, 184, 166', accent: 'text-teal-400' },
-  { id: '004', title: 'MOTION SYSTEM', subtitle: 'Spring-physics based routing.', glowColor: '249, 115, 22', accent: 'text-orange-400' },
+  { id: '004', title: 'MOTION HAND TRACKER', subtitle: 'Real-time Computer Vision.', glowColor: '249, 115, 22', accent: 'text-orange-400' },
 ];
 
 const LabCard = ({ exp, index }: { exp: typeof experiments[0], index: number }) => {
@@ -22,7 +22,7 @@ const LabCard = ({ exp, index }: { exp: typeof experiments[0], index: number }) 
       transition={{ delay: 0.1 * index, duration: 0.8, ease: "easeOut" }}
       className="relative w-full h-full perspective-[1000px]"
     >
-      <Link to={`/lab/${exp.id}`} className="block h-full">
+      <Link to={`/lab/${exp.id === '004' ? 'hand-tracker' : exp.id}`} className="block h-full">
         <motion.div
           whileHover={{ scale: 1.02, rotateX: 2, rotateY: -2 }}
           transition={{ type: 'spring', stiffness: 300, damping: 20 }}

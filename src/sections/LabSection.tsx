@@ -9,7 +9,7 @@ const experiments = [
   { id: '001', title: 'Liquid UI', desc: 'Exploring elastic surface deformation.', color: 'bg-blue-500/10', glowColor: '59, 130, 246' }, // Blue
   { id: '002', title: 'Generative Visuals', desc: 'Audio-reactive particle systems.', color: 'bg-purple-500/10', glowColor: '168, 85, 247' }, // Purple
   { id: '003', title: 'Interactive 3D', desc: 'Custom shaders in WebGL.', color: 'bg-emerald-500/10', glowColor: '16, 185, 129' }, // Emerald/Cyan
-  { id: '004', title: 'Motion System', desc: 'Spring-physics based routing.', color: 'bg-orange-500/10', glowColor: '249, 115, 22' }, // Orange/Amber
+  { id: '004', title: 'Motion Hand Tracker', desc: 'Real-time Computer Vision.', color: 'bg-orange-500/10', glowColor: '249, 115, 22' }, // Orange/Amber
 ];
 
 export const LabSection: React.FC = () => {
@@ -37,7 +37,7 @@ export const LabSection: React.FC = () => {
                   <p className="text-sm text-white/50">{exp.desc}</p>
                 </div>
               </div>
-              <Link to={`/lab/${exp.id}`}>
+              <Link to={`/lab/${exp.id === '004' ? 'hand-tracker' : exp.id}`}>
                 <GlassButton variant="secondary" className="px-6 py-3 self-start md:self-auto" icon={<Play size={14} />}>
                   RUN 
                 </GlassButton>
