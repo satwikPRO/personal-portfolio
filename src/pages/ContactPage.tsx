@@ -30,7 +30,7 @@ export const ContactPage: React.FC = () => {
     setErrorMessage('');
     setStatus('submitting');
     
-    const apiKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY;
+    const apiKey = 'a7a200dd-a1b4-4bb9-ad26-070f0a486f76';
     if (!apiKey) {
       setErrorMessage('Form is not configured. Missing API key.');
       setStatus('error');

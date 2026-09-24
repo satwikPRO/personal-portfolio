@@ -3,21 +3,68 @@ import { motion } from 'framer-motion';
 import { LiquidGlass } from '../components/LiquidGlass';
 import { GlassInput } from '../components/GlassInput';
 import { GlassButton } from '../components/GlassButton';
-import { Send, CheckCircle2 } from 'lucide-react';
+import { Send, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export const ContactSection: React.FC = () => {
+  const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (formData.name.trim().length < 2) {
+      setErrorMessage('Please enter a valid name.');
+      return;
+    }
+    if (!validateEmail(formData.email)) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    if (formData.message.trim().length < 10) {
+      setErrorMessage('Message is too short.');
+      return;
+    }
+    
+    setErrorMessage('');
     setIsSubmitting(true);
-    // Simulate network request
-    setTimeout(() => {
+    
+    const apiKey = 'a7a200dd-a1b4-4bb9-ad26-070f0a486f76';
+
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          access_key: apiKey,
+          name: formData.name,
+          email: formData.email,
+          message: formData.message,
+          subject: `New Portfolio Message from ${formData.name}`,
+          from_name: 'Satwik Portfolio',
+          botcheck: (document.getElementById('section-botcheck') as HTMLInputElement)?.checked ? true : false,
+        })
+      });
+
+      const result = await response.json();
+      if (response.status === 200) {
+        setIsSuccess(true);
+        setFormData({ name: '', email: '', message: '' });
+        setTimeout(() => setIsSuccess(false), 5000);
+      } else {
+        setErrorMessage(result.message || 'Something went wrong. Please try again.');
+      }
+    } catch (error) {
+      setErrorMessage('Network error. Please try again later.');
+    } finally {
       setIsSubmitting(false);
-      setIsSuccess(true);
-      setTimeout(() => setIsSuccess(false), 5000);
-    }, 1500);
+    }
   };
 
   return (
@@ -51,14 +98,45 @@ export const ContactSection: React.FC = () => {
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-              <div className="flex flex-col md:flex-row gap-6">
-                <GlassInput label="NAME" placeholder="YOUR NAME" required />
-                <GlassInput label="EMAIL" type="email" placeholder="YOUR EMAIL" required />
-              </div>
-              <GlassInput label="MESSAGE" placeholder="How can we collaborate?" multiline required />
+              <input type="checkbox" id="section-botcheck" className="hidden" style={{ display: 'none' }} />
               
+              <div className="flex flex-col md:flex-row gap-6">
+                <GlassInput 
+                  label="NAME" 
+                  placeholder="YOUR NAME" 
+                  value={formData.name}
+                  onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))}
+                  disabled={isSubmitting}
+                  required 
+                />
+                <GlassInput 
+                  label="EMAIL" 
+                  type="email" 
+                  placeholder="YOUR EMAIL" 
+                  value={formData.email}
+                  onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
+                  disabled={isSubmitting}
+                  required 
+                />
+              </div>
+              <GlassInput 
+                label="MESSAGE" 
+                placeholder="How can we collaborate?" 
+                value={formData.message}
+                onChange={(e) => setFormData(p => ({ ...p, message: e.target.value }))}
+                disabled={isSubmitting}
+                multiline 
+                required 
+              />
+              
+              {errorMessage && (
+                <div className="text-red-400 text-sm flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl mt-2">
+                  <AlertCircle size={16} /> {errorMessage}
+                </div>
+              )}
+
               <div className="mt-4 flex justify-end">
-                <GlassButton type="submit" variant="primary" icon={<Send size={16} />} disabled={isSubmitting}>
+                <GlassButton type="submit" variant="primary" icon={isSubmitting ? undefined : <Send size={16} />} disabled={isSubmitting}>
                   {isSubmitting ? 'SENDING...' : 'SEND MESSAGE'}
                 </GlassButton>
               </div>
