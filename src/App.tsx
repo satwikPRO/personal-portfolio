@@ -1,7 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import Lenis from 'lenis';
 import { AnimatePresence, motion } from 'framer-motion';
-import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
 import { CosmicBackground } from './components/CosmicBackground';
 import { LiquidCursor } from './components/LiquidCursor';
@@ -53,6 +53,8 @@ const AnimatedRoutes = () => {
             <MotionHandTracker />
           </Suspense>
         } />
+        <Route path="/lab/004" element={<Navigate to="/lab/hand-tracker" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
   );
