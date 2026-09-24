@@ -2,66 +2,48 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { ExperimentShell } from '../components/ExperimentShell';
 
-// Filter configurations
 const FILTERS = [
-  'NEON TRAILS',
-  'PARTICLE AURA',
-  'ENERGY ORBS',
-  'CYBER GRID',
-  'FIREFLY SWARM',
-  'RIPPLE WAVES',
-  'GALAXY PAINT'
+  '01 LIQUID GLASS',
+  '02 NEON SKIN',
+  '03 HOLOGRAPHIC SKIN',
+  '04 LIQUID CHROME',
+  '05 ELECTRIC FIELD',
+  '06 THERMAL SKIN',
+  '07 ENERGY MEMBRANE',
+  '08 PIXEL GLITCH',
+  '09 SMOKE VEIL',
+  '10 LIQUID LIGHT'
 ] as const;
 
 type FilterType = typeof FILTERS[number];
 
-// Interfaces for particle systems
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  color: string;
-  size: number;
-}
-
-interface TrailPoint {
-  x: number;
-  y: number;
-  timestamp: number;
-}
-
-interface Ripple {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  opacity: number;
-}
+// Helper to get hand bounding box
+const getBoundingBox = (landmarks: NormalizedLandmark[], width: number, height: number) => {
+  let minX = width, minY = height, maxX = 0, maxY = 0;
+  landmarks.forEach(lm => {
+    const x = lm.x * width;
+    const y = lm.y * height;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  });
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+};
 
 export const MotionHandTracker: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const galaxyCanvasRef = useRef<HTMLCanvasElement>(null); // Persistent canvas for galaxy paint
   
   const [isActive, setIsActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('NEON TRAILS');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('01 LIQUID GLASS');
   const [intensity, setIntensity] = useState(1);
-  const [gesture, setGesture] = useState('NONE');
+  const [detectedHands, setDetectedHands] = useState(0);
   
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const animationRef = useRef<number>(0);
   const lastVideoTimeRef = useRef<number>(-1);
-  
-  // Effect states
-  const trailsRef = useRef<Map<number, TrailPoint[]>>(new Map());
-  const particlesRef = useRef<Particle[]>([]);
-  const ripplesRef = useRef<Ripple[]>([]);
-  const lastGestureRef = useRef<string>('NONE');
-  const gestureCooldownRef = useRef<number>(0);
 
   // Initialize MediaPipe
   useEffect(() => {
@@ -77,7 +59,7 @@ export const MotionHandTracker: React.FC = () => {
             delegate: "GPU"
           },
           runningMode: "VIDEO",
-          numHands: 2
+          numHands: 2 // Crucial: Support BOTH hands
         });
         if (isMounted) landmarkerRef.current = landmarker;
       } catch (err) {
@@ -120,275 +102,345 @@ export const MotionHandTracker: React.FC = () => {
       videoRef.current.srcObject = null;
     }
     setIsActive(false);
+    setDetectedHands(0);
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    setGesture('NONE');
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => stopCamera();
   }, []);
 
-  // Gesture Recognition
-  const recognizeGesture = (landmarks: NormalizedLandmark[]) => {
-    // 0: Wrist, 4: Thumb tip, 8: Index tip, 12: Middle tip, 16: Ring tip, 20: Pinky tip
-    // 5: Index MCP, 9: Middle MCP, 13: Ring MCP, 17: Pinky MCP
-    
-    const getDistance = (p1: NormalizedLandmark, p2: NormalizedLandmark) => 
-      Math.hypot(p1.x - p2.x, p1.y - p2.y);
-      
-    const isFingerOpen = (tipIdx: number, mcpIdx: number) => 
-      landmarks[tipIdx].y < landmarks[mcpIdx].y; // Note: y is inverted in screen space, lower value means higher up physically
+  // --- DRAWING UTILITIES ---
 
-    const indexOpen = isFingerOpen(8, 5);
-    const middleOpen = isFingerOpen(12, 9);
-    const ringOpen = isFingerOpen(16, 13);
-    const pinkyOpen = isFingerOpen(20, 17);
-    
-    const thumbIndexDist = getDistance(landmarks[4], landmarks[8]);
-    
-    if (thumbIndexDist < 0.05) return 'PINCH';
-    if (indexOpen && middleOpen && ringOpen && pinkyOpen) return 'OPEN_PALM';
-    if (!indexOpen && !middleOpen && !ringOpen && !pinkyOpen) return 'FIST';
-    if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) return 'PEACE';
-    if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) return 'POINT';
-    
-    return 'UNKNOWN';
+  const buildPalmPath = (landmarks: NormalizedLandmark[], width: number, height: number) => {
+    const path = new Path2D();
+    const palmIndices = [0, 1, 5, 9, 13, 17];
+    path.moveTo(landmarks[0].x * width, landmarks[0].y * height);
+    for (let i = 1; i < palmIndices.length; i++) {
+      path.lineTo(landmarks[palmIndices[i]].x * width, landmarks[palmIndices[i]].y * height);
+    }
+    path.closePath();
+    return path;
   };
 
-  // Drawing functions
+  const drawFingers = (ctx: CanvasRenderingContext2D, landmarks: NormalizedLandmark[], width: number, height: number, thickness: number) => {
+    const fingers = [
+      [1, 2, 3, 4], // Thumb
+      [5, 6, 7, 8], // Index
+      [9, 10, 11, 12], // Middle
+      [13, 14, 15, 16], // Ring
+      [17, 18, 19, 20] // Pinky
+    ];
+    ctx.lineWidth = thickness;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    fingers.forEach(finger => {
+      ctx.beginPath();
+      ctx.moveTo(landmarks[finger[0]].x * width, landmarks[finger[0]].y * height);
+      for (let i = 1; i < finger.length; i++) {
+        ctx.lineTo(landmarks[finger[i]].x * width, landmarks[finger[i]].y * height);
+      }
+      ctx.stroke();
+    });
+  };
+
+  const drawHandSilhouette = (ctx: CanvasRenderingContext2D, landmarks: NormalizedLandmark[], width: number, height: number, thickness: number = 30) => {
+    const palm = buildPalmPath(landmarks, width, height);
+    ctx.fill(palm);
+    drawFingers(ctx, landmarks, width, height, thickness);
+  };
+
+  const fillWebbings = (ctx: CanvasRenderingContext2D, landmarks: NormalizedLandmark[], width: number, height: number) => {
+    const fingers = [
+      [2, 3, 4],
+      [5, 6, 7, 8],
+      [9, 10, 11, 12],
+      [13, 14, 15, 16],
+      [17, 18, 19, 20]
+    ];
+    for (let i = 0; i < fingers.length - 1; i++) {
+      const f1 = fingers[i];
+      const f2 = fingers[i+1];
+      ctx.beginPath();
+      ctx.moveTo(landmarks[f1[0]].x * width, landmarks[f1[0]].y * height);
+      for(let j=1; j<f1.length; j++) {
+        ctx.lineTo(landmarks[f1[j]].x * width, landmarks[f1[j]].y * height);
+      }
+      for(let j=f2.length-1; j>=0; j--) {
+        ctx.lineTo(landmarks[f2[j]].x * width, landmarks[f2[j]].y * height);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  };
+
+  // --- FILTER IMPLEMENTATIONS ---
+
   const drawFilter = (
     ctx: CanvasRenderingContext2D, 
     landmarks: NormalizedLandmark[], 
     width: number, 
     height: number,
-    handIndex: number
+    now: number
   ) => {
-    const currentGesture = recognizeGesture(landmarks);
-    if (handIndex === 0) setGesture(currentGesture);
-
-    // Track state for triggers
-    const now = performance.now();
-    let justTriggered = false;
-    if (handIndex === 0 && currentGesture !== lastGestureRef.current && now - gestureCooldownRef.current > 500) {
-      justTriggered = true;
-      lastGestureRef.current = currentGesture;
-      gestureCooldownRef.current = now;
-    }
-
-    const indexTip = { x: landmarks[8].x * width, y: landmarks[8].y * height };
-    const palmCenter = { x: landmarks[9].x * width, y: landmarks[9].y * height };
+    const bbox = getBoundingBox(landmarks, width, height);
 
     switch (activeFilter) {
-      case 'NEON TRAILS': {
-        const id = handIndex;
-        if (!trailsRef.current.has(id)) trailsRef.current.set(id, []);
-        const trail = trailsRef.current.get(id)!;
-        trail.push({ x: indexTip.x, y: indexTip.y, timestamp: now });
+      case '01 LIQUID GLASS': {
+        // Webbings
+        ctx.fillStyle = `rgba(150, 200, 255, ${0.15 * intensity})`;
+        fillWebbings(ctx, landmarks, width, height);
         
-        // Remove old points
-        while (trail.length > 0 && now - trail[0].timestamp > 1000) trail.shift();
+        // Solid Hand
+        ctx.fillStyle = `rgba(200, 230, 255, ${0.3 * intensity})`;
+        ctx.strokeStyle = `rgba(200, 230, 255, ${0.3 * intensity})`;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(100, 200, 255, 0.6)';
+        drawHandSilhouette(ctx, landmarks, width, height, 35 * intensity);
         
-        if (trail.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(trail[0].x, trail[0].y);
-          for (let i = 1; i < trail.length; i++) {
-            ctx.lineTo(trail[i].x, trail[i].y);
-          }
-          ctx.strokeStyle = `rgba(0, 255, 255, ${intensity})`;
-          ctx.lineWidth = 15;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.shadowBlur = 30;
-          ctx.shadowColor = '#00ffff';
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-        }
+        // Edge highlights
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * intensity})`;
+        ctx.shadowBlur = 5;
+        drawFingers(ctx, landmarks, width, height, 2);
+        ctx.shadowBlur = 0;
         break;
       }
       
-      case 'PARTICLE AURA': {
-        // Spawn particles
-        if (currentGesture === 'OPEN_PALM') {
-          for (let i = 0; i < 5 * intensity; i++) {
-            particlesRef.current.push({
-              x: palmCenter.x + (Math.random() - 0.5) * 50,
-              y: palmCenter.y + (Math.random() - 0.5) * 50,
-              vx: (Math.random() - 0.5) * 5,
-              vy: (Math.random() - 0.5) * 5 - 2, // Drift up
-              life: 100,
-              maxLife: 100,
-              color: `hsl(${Math.random() * 60 + 200}, 100%, 70%)`,
-              size: Math.random() * 8 + 2
-            });
-          }
-        }
-        break;
-      }
-      
-      case 'ENERGY ORBS': {
-        const time = now * 0.002;
-        const radius = 60 * intensity;
-        
-        [palmCenter, indexTip].forEach((center, idx) => {
-          const x = center.x + Math.cos(time + idx * Math.PI) * radius;
-          const y = center.y + Math.sin(time + idx * Math.PI) * radius;
-          
-          ctx.beginPath();
-          ctx.arc(x, y, 15, 0, Math.PI * 2);
-          ctx.fillStyle = idx === 0 ? '#ff00ff' : '#00ffff';
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = ctx.fillStyle;
-          ctx.fill();
-          
-          // Connect to center
-          ctx.beginPath();
-          ctx.moveTo(center.x, center.y);
-          ctx.lineTo(x, y);
-          ctx.strokeStyle = ctx.fillStyle;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-        });
-        
-        if (currentGesture === 'PINCH') {
-          ctx.beginPath();
-          ctx.arc(indexTip.x, indexTip.y, 40, 0, Math.PI*2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-          ctx.fill();
-        }
-        break;
-      }
-      
-      case 'CYBER GRID': {
-        ctx.strokeStyle = `rgba(0, 255, 128, ${0.5 * intensity})`;
-        ctx.lineWidth = 2;
-        
-        // Connections based on Mediapipe Hand topology
-        const connections = [
-          [0,1],[1,2],[2,3],[3,4], // Thumb
-          [0,5],[5,6],[6,7],[7,8], // Index
-          [5,9],[9,10],[10,11],[11,12], // Middle
-          [9,13],[13,14],[14,15],[15,16], // Ring
-          [13,17],[17,18],[18,19],[19,20], // Pinky
-          [0,17] // Palm base
-        ];
-        
-        ctx.beginPath();
-        connections.forEach(([i, j]) => {
-          ctx.moveTo(landmarks[i].x * width, landmarks[i].y * height);
-          ctx.lineTo(landmarks[j].x * width, landmarks[j].y * height);
-        });
-        ctx.stroke();
-        
-        // Draw joints
-        ctx.fillStyle = '#00ff80';
-        landmarks.forEach(lm => {
-          ctx.beginPath();
-          ctx.arc(lm.x * width, lm.y * height, 4, 0, Math.PI*2);
-          ctx.fill();
-        });
-        break;
-      }
-      
-      case 'FIREFLY SWARM': {
-        // Spawn randomly around the hand bounding box
-        if (Math.random() < 0.3 * intensity) {
-          particlesRef.current.push({
-            x: palmCenter.x + (Math.random() - 0.5) * 200,
-            y: palmCenter.y + (Math.random() - 0.5) * 200,
-            vx: (Math.random() - 0.5) * 2,
-            vy: (Math.random() - 0.5) * 2,
-            life: 200,
-            maxLife: 200,
-            color: '#ffff80',
-            size: Math.random() * 3 + 1
-          });
-        }
-        break;
-      }
-      
-      case 'RIPPLE WAVES': {
-        if (justTriggered && currentGesture === 'FIST') {
-          ripplesRef.current.push({
-            x: palmCenter.x,
-            y: palmCenter.y,
-            radius: 10,
-            maxRadius: 300 * intensity,
-            opacity: 1
-          });
-        }
-        break;
-      }
-      
-      case 'GALAXY PAINT': {
-        if (currentGesture === 'POINT' && galaxyCanvasRef.current) {
-          const gCtx = galaxyCanvasRef.current.getContext('2d');
-          if (gCtx) {
-            gCtx.beginPath();
-            gCtx.arc(indexTip.x, indexTip.y, 8 * intensity, 0, Math.PI * 2);
-            gCtx.fillStyle = `hsl(${(now * 0.1) % 360}, 100%, 60%)`;
-            gCtx.shadowBlur = 10;
-            gCtx.shadowColor = gCtx.fillStyle;
-            gCtx.fill();
-            gCtx.shadowBlur = 0;
-          }
-        }
-        // Draw persistent canvas onto main canvas
-        if (galaxyCanvasRef.current) {
-          ctx.drawImage(galaxyCanvasRef.current, 0, 0);
-        }
-        break;
-      }
-    }
-  };
+      case '02 NEON SKIN': {
+        // Neon Webbings
+        const grad = ctx.createLinearGradient(bbox.x, bbox.y, bbox.x + bbox.w, bbox.y + bbox.h);
+        grad.addColorStop(0, `rgba(0, 255, 255, ${0.2 * intensity})`);
+        grad.addColorStop(1, `rgba(255, 0, 255, ${0.2 * intensity})`);
+        ctx.fillStyle = grad;
+        fillWebbings(ctx, landmarks, width, height);
 
-  // Update global particles and ripples
-  const updatePhysics = (ctx: CanvasRenderingContext2D) => {
-    // Particles
-    for (let i = particlesRef.current.length - 1; i >= 0; i--) {
-      const p = particlesRef.current[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life--;
-      
-      if (activeFilter === 'FIREFLY SWARM') {
-        p.vx += (Math.random() - 0.5) * 0.5;
-        p.vy += (Math.random() - 0.5) * 0.5;
+        // Hand Silhouette Inner Dark Fill
+        ctx.fillStyle = `rgba(10, 5, 20, ${0.9 * intensity})`;
+        ctx.strokeStyle = `rgba(10, 5, 20, ${0.9 * intensity})`;
+        drawHandSilhouette(ctx, landmarks, width, height, 35);
+        
+        // Hand Skeleton Glowing Outline
+        ctx.strokeStyle = `rgba(0, 255, 255, ${1 * intensity})`;
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = '#00ffff';
+        drawFingers(ctx, landmarks, width, height, 4);
+        ctx.stroke(buildPalmPath(landmarks, width, height));
+        
+        // Secondary glow
+        ctx.strokeStyle = '#fff';
+        ctx.shadowBlur = 5;
+        drawFingers(ctx, landmarks, width, height, 1);
+        ctx.shadowBlur = 0;
+        break;
       }
       
-      if (p.life <= 0) {
-        particlesRef.current.splice(i, 1);
-        continue;
+      case '03 HOLOGRAPHIC SKIN': {
+        const time = now * 0.001;
+        const grad = ctx.createLinearGradient(
+          bbox.x + Math.sin(time) * 50, 
+          bbox.y + Math.cos(time) * 50, 
+          bbox.x + bbox.w, 
+          bbox.y + bbox.h
+        );
+        grad.addColorStop(0, `rgba(0, 255, 255, ${0.7 * intensity})`);
+        grad.addColorStop(0.33, `rgba(255, 0, 255, ${0.7 * intensity})`);
+        grad.addColorStop(0.66, `rgba(255, 255, 0, ${0.7 * intensity})`);
+        grad.addColorStop(1, `rgba(0, 255, 128, ${0.7 * intensity})`);
+        
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = grad;
+        ctx.shadowBlur = 30 * intensity;
+        ctx.shadowColor = 'rgba(255, 0, 255, 0.5)';
+        
+        fillWebbings(ctx, landmarks, width, height);
+        drawHandSilhouette(ctx, landmarks, width, height, 35 * intensity);
+        ctx.shadowBlur = 0;
+        break;
       }
       
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (p.life / p.maxLife), 0, Math.PI*2);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = p.life / p.maxLife;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = p.color;
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
-    }
-    
-    // Ripples
-    for (let i = ripplesRef.current.length - 1; i >= 0; i--) {
-      const r = ripplesRef.current[i];
-      r.radius += 5;
-      r.opacity -= 0.02;
-      
-      if (r.opacity <= 0) {
-        ripplesRef.current.splice(i, 1);
-        continue;
+      case '04 LIQUID CHROME': {
+        const grad = ctx.createLinearGradient(bbox.x, bbox.y, bbox.x + bbox.w, bbox.y);
+        grad.addColorStop(0, `rgba(40, 40, 45, ${1 * intensity})`);
+        grad.addColorStop(0.2, `rgba(200, 200, 210, ${1 * intensity})`);
+        grad.addColorStop(0.5, `rgba(10, 10, 20, ${1 * intensity})`);
+        grad.addColorStop(0.8, `rgba(255, 255, 255, ${1 * intensity})`);
+        grad.addColorStop(1, `rgba(50, 50, 60, ${1 * intensity})`);
+        
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = grad;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#fff';
+        drawHandSilhouette(ctx, landmarks, width, height, 35 * intensity);
+        ctx.shadowBlur = 0;
+        break;
       }
       
-      ctx.beginPath();
-      ctx.arc(r.x, r.y, r.radius, 0, Math.PI*2);
-      ctx.strokeStyle = `rgba(100, 200, 255, ${r.opacity})`;
-      ctx.lineWidth = 4;
-      ctx.stroke();
+      case '05 ELECTRIC FIELD': {
+        // Base dark hand mask
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.5 * intensity})`;
+        ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * intensity})`;
+        drawHandSilhouette(ctx, landmarks, width, height, 30);
+        
+        // Electric Arcs between fingertips
+        const tips = [4, 8, 12, 16, 20];
+        ctx.lineWidth = 2 * intensity;
+        ctx.strokeStyle = '#00ffff';
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#0088ff';
+        
+        for (let i = 0; i < tips.length - 1; i++) {
+          const p1 = { x: landmarks[tips[i]].x * width, y: landmarks[tips[i]].y * height };
+          const p2 = { x: landmarks[tips[i+1]].x * width, y: landmarks[tips[i+1]].y * height };
+          
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          
+          // Jittery line
+          const segments = 5;
+          for (let j = 1; j <= segments; j++) {
+            const tx = p1.x + (p2.x - p1.x) * (j / segments) + (Math.random() - 0.5) * 30;
+            const ty = p1.y + (p2.y - p1.y) * (j / segments) + (Math.random() - 0.5) * 30;
+            if (j === segments) ctx.lineTo(p2.x, p2.y);
+            else ctx.lineTo(tx, ty);
+          }
+          ctx.stroke();
+        }
+        
+        // Inner energy
+        ctx.fillStyle = `rgba(0, 255, 255, ${0.3 * intensity})`;
+        ctx.fill(buildPalmPath(landmarks, width, height));
+        ctx.shadowBlur = 0;
+        break;
+      }
+      
+      case '06 THERMAL SKIN': {
+        const radGrad = ctx.createRadialGradient(bbox.cx, bbox.cy, 10, bbox.cx, bbox.cy, bbox.h * 0.8);
+        radGrad.addColorStop(0, `rgba(255, 0, 0, ${0.9 * intensity})`);
+        radGrad.addColorStop(0.2, `rgba(255, 128, 0, ${0.9 * intensity})`);
+        radGrad.addColorStop(0.5, `rgba(255, 255, 0, ${0.9 * intensity})`);
+        radGrad.addColorStop(0.8, `rgba(0, 255, 128, ${0.9 * intensity})`);
+        radGrad.addColorStop(1, `rgba(0, 0, 255, ${0.9 * intensity})`);
+        
+        ctx.fillStyle = radGrad;
+        ctx.strokeStyle = radGrad;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(255,0,0,0.5)';
+        drawHandSilhouette(ctx, landmarks, width, height, 40 * intensity);
+        ctx.shadowBlur = 0;
+        break;
+      }
+      
+      case '07 ENERGY MEMBRANE': {
+        // The most important effect: translucent flexible membrane
+        ctx.fillStyle = `rgba(0, 150, 255, ${0.4 * intensity})`;
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+        fillWebbings(ctx, landmarks, width, height);
+        
+        // Draw bright edge around the membrane
+        ctx.strokeStyle = `rgba(0, 255, 255, ${0.9 * intensity})`;
+        ctx.lineWidth = 3;
+        const fingers = [ [2,3,4], [5,6,7,8], [9,10,11,12], [13,14,15,16], [17,18,19,20] ];
+        for (let i = 0; i < fingers.length - 1; i++) {
+          const f1 = fingers[i];
+          const f2 = fingers[i+1];
+          ctx.beginPath();
+          ctx.moveTo(landmarks[f1[f1.length-1]].x * width, landmarks[f1[f1.length-1]].y * height);
+          ctx.lineTo(landmarks[f2[f2.length-1]].x * width, landmarks[f2[f2.length-1]].y * height);
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        break;
+      }
+      
+      case '08 PIXEL GLITCH': {
+        const drawCyan = () => {
+          ctx.fillStyle = `rgba(0, 255, 255, ${0.8 * intensity})`;
+          ctx.strokeStyle = `rgba(0, 255, 255, ${0.8 * intensity})`;
+          drawHandSilhouette(ctx, landmarks, width, height, 35);
+        };
+        const drawMagenta = () => {
+          ctx.fillStyle = `rgba(255, 0, 255, ${0.8 * intensity})`;
+          ctx.strokeStyle = `rgba(255, 0, 255, ${0.8 * intensity})`;
+          drawHandSilhouette(ctx, landmarks, width, height, 35);
+        };
+        
+        // Offset glitch
+        const ox = (Math.random() - 0.5) * 20 * intensity;
+        const oy = (Math.random() - 0.5) * 10 * intensity;
+        
+        ctx.save();
+        ctx.translate(ox, oy);
+        drawCyan();
+        ctx.restore();
+        
+        ctx.save();
+        ctx.translate(-ox, -oy);
+        drawMagenta();
+        ctx.restore();
+        
+        // Pixel blocks
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.5 * intensity})`;
+        for(let i=0; i<15; i++) {
+          const px = bbox.x + Math.random() * bbox.w;
+          const py = bbox.y + Math.random() * bbox.h;
+          const pw = Math.random() * 40;
+          const ph = Math.random() * 20;
+          ctx.fillRect(px, py, pw, ph);
+        }
+        break;
+      }
+      
+      case '09 SMOKE VEIL': {
+        ctx.globalCompositeOperation = 'screen';
+        landmarks.forEach((lm, idx) => {
+          // Skip some landmarks for performance
+          if (idx % 2 !== 0 && idx !== 8 && idx !== 12 && idx !== 16 && idx !== 20) return;
+          
+          const x = lm.x * width + (Math.random() - 0.5) * 20;
+          const y = lm.y * height - Math.random() * 30; // Smoke rises
+          const radius = 60 * intensity * (Math.random() * 0.5 + 0.5);
+          
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+          grad.addColorStop(0, `rgba(150, 100, 255, ${0.3 * intensity})`);
+          grad.addColorStop(0.5, `rgba(50, 150, 255, ${0.1 * intensity})`);
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+        break;
+      }
+      
+      case '10 LIQUID LIGHT': {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(255, 100, 255, 0.8)';
+        ctx.strokeStyle = `rgba(255, 150, 255, ${0.8 * intensity})`;
+        ctx.lineWidth = 15 * intensity;
+        ctx.lineCap = 'round';
+        
+        const fingers = [ [2,3,4], [5,6,7,8], [9,10,11,12], [13,14,15,16], [17,18,19,20] ];
+        for (let i = 0; i < fingers.length - 1; i++) {
+          const f1 = fingers[i];
+          const f2 = fingers[i+1];
+          for(let j=1; j<f1.length; j++) {
+            const p1 = { x: landmarks[f1[j]].x * width, y: landmarks[f1[j]].y * height };
+            const p2 = { x: landmarks[f2[j]].x * width, y: landmarks[f2[j]].y * height };
+            
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            // Flowing curve
+            ctx.quadraticCurveTo(p1.x, p2.y + 40, p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+        ctx.shadowBlur = 0;
+        break;
+      }
     }
   };
 
@@ -402,14 +454,9 @@ export const MotionHandTracker: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Match canvas size to video display size
     const setCanvasSize = () => {
       canvas.width = video.clientWidth;
       canvas.height = video.clientHeight;
-      if (galaxyCanvasRef.current) {
-        galaxyCanvasRef.current.width = video.clientWidth;
-        galaxyCanvasRef.current.height = video.clientHeight;
-      }
     };
     setCanvasSize();
 
@@ -423,20 +470,16 @@ export const MotionHandTracker: React.FC = () => {
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Always draw persistent galaxy paint if active, even if no hands
-        if (activeFilter === 'GALAXY PAINT' && galaxyCanvasRef.current) {
-           ctx.drawImage(galaxyCanvasRef.current, 0, 0);
-        }
-        
-        if (results.landmarks) {
+        if (results.landmarks && results.landmarks.length > 0) {
+          setDetectedHands(results.landmarks.length);
+          
+          // Apply effect to BOTH hands independently
           for (let i = 0; i < results.landmarks.length; i++) {
-            drawFilter(ctx, results.landmarks[i], canvas.width, canvas.height, i);
+            drawFilter(ctx, results.landmarks[i], canvas.width, canvas.height, performance.now());
           }
         } else {
-          setGesture('NONE');
+          setDetectedHands(0);
         }
-        
-        updatePhysics(ctx);
       }
       
       animationRef.current = requestAnimationFrame(renderLoop);
@@ -451,18 +494,7 @@ export const MotionHandTracker: React.FC = () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       startTracking();
     }
-    // Clear particles on switch
-    particlesRef.current = [];
-    ripplesRef.current = [];
-    trailsRef.current.clear();
   }, [activeFilter, intensity, isActive, startTracking]);
-
-  const clearGalaxyPaint = () => {
-    if (galaxyCanvasRef.current) {
-      const ctx = galaxyCanvasRef.current.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, galaxyCanvasRef.current.width, galaxyCanvasRef.current.height);
-    }
-  };
 
   const hud = (
     <>
@@ -473,8 +505,8 @@ export const MotionHandTracker: React.FC = () => {
         </span>
       </div>
       <div className="flex justify-between items-center mt-2">
-        <span className="text-[10px] text-white/40 uppercase tracking-widest">GESTURE</span>
-        <span className="text-xs text-white/90 font-mono">{gesture}</span>
+        <span className="text-[10px] text-white/40 uppercase tracking-widest">HANDS DETECTED</span>
+        <span className="text-xs text-white/90 font-mono">{detectedHands} / 2</span>
       </div>
       <div className="flex justify-between items-center mt-2">
         <span className="text-[10px] text-white/40 uppercase tracking-widest">ENGINE</span>
@@ -503,17 +535,18 @@ export const MotionHandTracker: React.FC = () => {
       )}
 
       <div className="flex flex-col gap-2 mt-2">
-        <span className="text-[10px] text-white/40 uppercase tracking-widest mb-1">SELECT FILTER</span>
-        <div className="grid grid-cols-2 gap-2">
+        <span className="text-[10px] text-white/40 uppercase tracking-widest mb-1">SELECT FILTER (APPLIES TO BOTH HANDS)</span>
+        <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto pr-1">
           {FILTERS.map((f) => (
             <button
               key={f}
               onClick={() => setActiveFilter(f)}
-              className={`py-2 text-[9px] tracking-widest border rounded transition-colors ${
+              className={`py-2 px-1 text-[8px] sm:text-[9px] tracking-widest border rounded transition-colors truncate ${
                 activeFilter === f ? 'border-teal-500 bg-teal-500/20 text-white' : 'border-white/10 text-white/40 hover:text-white/80'
               }`}
+              title={f}
             >
-              {f}
+              {f.split(' ').slice(1).join(' ')}
             </button>
           ))}
         </div>
@@ -521,7 +554,7 @@ export const MotionHandTracker: React.FC = () => {
 
       <div className="flex flex-col gap-2 mt-2">
         <div className="flex justify-between text-[10px] uppercase tracking-widest">
-          <span className="text-white/60">INTENSITY</span>
+          <span className="text-white/60">EFFECT INTENSITY</span>
           <span className="text-teal-400 font-mono">{intensity.toFixed(1)}</span>
         </div>
         <input 
@@ -530,15 +563,6 @@ export const MotionHandTracker: React.FC = () => {
           className="w-full accent-teal-500 h-1 bg-white/10 rounded-full appearance-none"
         />
       </div>
-
-      {activeFilter === 'GALAXY PAINT' && (
-        <button 
-          onClick={clearGalaxyPaint}
-          className="mt-2 w-full py-2 border border-white/10 hover:bg-white/5 transition-colors text-xs tracking-widest text-white/60 uppercase rounded"
-        >
-          CLEAR CANVAS
-        </button>
-      )}
     </div>
   );
 
@@ -546,13 +570,13 @@ export const MotionHandTracker: React.FC = () => {
     <ExperimentShell
       id="004"
       title="MOTION HAND TRACKER"
-      subtitle="Real-time Computer Vision"
-      description="An interactive laboratory exploring AI-driven hand tracking. Activate your camera to control particles, trails, and physical simulations using your bare hands."
+      subtitle="Interactive 10-Filter Overlay Engine"
+      description="An interactive laboratory exploring AI-driven hand tracking. Your hands become the canvas for 10 unique digital materials and physics simulations."
       controls={controls}
       hud={hud}
       instructions={{
         mouse: "Click 'Start Experience'",
-        touch: "Use hand gestures: Fist, Point, Peace, Pinch"
+        touch: "Bring both hands into the camera view"
       }}
     >
       <div className="w-full h-full relative overflow-hidden bg-black/50 rounded-lg flex items-center justify-center">
@@ -562,14 +586,11 @@ export const MotionHandTracker: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
             </svg>
             <p className="text-white/40 text-sm font-light tracking-wide max-w-sm">
-              This experiment requires camera access. All processing is done locally on your device. No video is recorded or sent to any server.
+              This experiment requires camera access. All processing is done locally on your device. Both hands are fully supported. No video is recorded or sent to any server.
             </p>
           </div>
         )}
         
-        {/* Hidden persistent canvas for Galaxy Paint */}
-        <canvas ref={galaxyCanvasRef} className="hidden" />
-
         {/* Video element - mirrored */}
         <video 
           ref={videoRef} 
