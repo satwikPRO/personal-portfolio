@@ -12,7 +12,7 @@ const MODES = [
 type ModeType = typeof MODES[number];
 
 interface Point { x: number; y: number; u: number; v: number; }
-interface ScreenPoints { TL: Point, ML: Point, BL: Point, TR: Point, MR: Point, BR: Point }
+interface ScreenPoints { TL: Point, BL: Point, TR: Point, BR: Point }
 
 export const MotionHandTracker: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -151,20 +151,16 @@ export const MotionHandTracker: React.FC = () => {
   };
 
   const drawFloatingScreen = (ctx: CanvasRenderingContext2D, pts: ScreenPoints, offscreen: HTMLCanvasElement) => {
-    // 4 Triangles forming the 2x2 grid
-    textureMapTriangle(ctx, offscreen, [pts.TL, pts.TR, pts.ML]);
-    textureMapTriangle(ctx, offscreen, [pts.TR, pts.MR, pts.ML]);
-    textureMapTriangle(ctx, offscreen, [pts.ML, pts.MR, pts.BL]);
-    textureMapTriangle(ctx, offscreen, [pts.MR, pts.BR, pts.BL]);
+    // 2 Triangles forming the main rectangle
+    textureMapTriangle(ctx, offscreen, [pts.TL, pts.TR, pts.BL]);
+    textureMapTriangle(ctx, offscreen, [pts.TR, pts.BR, pts.BL]);
 
     // Draw borders/glow based on mode
     ctx.beginPath();
     ctx.moveTo(pts.TL.x, pts.TL.y);
     ctx.lineTo(pts.TR.x, pts.TR.y);
-    ctx.lineTo(pts.MR.x, pts.MR.y);
     ctx.lineTo(pts.BR.x, pts.BR.y);
     ctx.lineTo(pts.BL.x, pts.BL.y);
-    ctx.lineTo(pts.ML.x, pts.ML.y);
     ctx.closePath();
 
     ctx.strokeStyle = activeMode === '04 LIQUID GLASS' ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 255, 255, 0.6)';
@@ -186,7 +182,7 @@ export const MotionHandTracker: React.FC = () => {
       ctx.stroke();
     };
 
-    [pts.TL, pts.ML, pts.BL, pts.TR, pts.MR, pts.BR].forEach(drawMarker);
+    [pts.TL, pts.BL, pts.TR, pts.BR].forEach(drawMarker);
   };
 
   const renderOffscreenContent = (ctx: CanvasRenderingContext2D, width: number, height: number, now: number) => {
@@ -328,10 +324,8 @@ export const MotionHandTracker: React.FC = () => {
 
             const newTargets: ScreenPoints = {
               TL: { x: leftHand[8].x * w, y: leftHand[8].y * h, u: 0, v: 0 },
-              ML: { x: leftHand[12].x * w, y: leftHand[12].y * h, u: 0, v: oh/2 },
               BL: { x: leftHand[4].x * w, y: leftHand[4].y * h, u: 0, v: oh },
               TR: { x: rightHand[8].x * w, y: rightHand[8].y * h, u: ow, v: 0 },
-              MR: { x: rightHand[12].x * w, y: rightHand[12].y * h, u: ow, v: oh/2 },
               BR: { x: rightHand[4].x * w, y: rightHand[4].y * h, u: ow, v: oh }
             };
 
@@ -348,7 +342,7 @@ export const MotionHandTracker: React.FC = () => {
             currentPointsRef.current = JSON.parse(JSON.stringify(targetPointsRef.current));
           } else {
             // Lerp towards targets
-            const keys = ['TL', 'ML', 'BL', 'TR', 'MR', 'BR'] as const;
+            const keys = ['TL', 'BL', 'TR', 'BR'] as const;
             keys.forEach(k => {
               const target = targetPointsRef.current![k];
               const current = currentPointsRef.current![k];
@@ -391,7 +385,7 @@ export const MotionHandTracker: React.FC = () => {
       <div className="flex justify-between items-center mt-2">
         <span className="text-[10px] text-white/40 uppercase tracking-widest">TRACKING</span>
         <span className="text-xs text-white/90 font-mono">
-          {detectedHands === 2 ? '6-POINT LOCKED' : `${detectedHands} HAND(S)`}
+          {detectedHands === 2 ? '4-POINT LOCKED' : `${detectedHands} HAND(S)`}
         </span>
       </div>
       <div className="flex justify-between items-center mt-2">
@@ -470,13 +464,13 @@ export const MotionHandTracker: React.FC = () => {
     <ExperimentShell
       id="004"
       title="MOTION HAND TRACKER"
-      subtitle="Six-Finger Holographic Display"
+      subtitle="Four-Finger Holographic Display"
       description="An interactive laboratory exploring spatial interfaces. Use both hands to summon, stretch, and deform a floating holographic screen in midair."
       controls={controls}
       hud={hud}
       instructions={{
         mouse: "Click 'Start Experience'",
-        touch: "Use left and right thumbs, index, and middle fingers to control the screen"
+        touch: "Use left and right thumbs and index fingers to control the screen"
       }}
     >
       <div className="w-full h-full relative overflow-hidden bg-black/50 rounded-lg flex items-center justify-center">
