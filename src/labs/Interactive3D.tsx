@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment } from '@react-three/drei';
+import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { ExperimentShell } from '../components/ExperimentShell';
 
@@ -351,7 +351,6 @@ export const Interactive3D: React.FC = () => {
       <div className="w-full h-full cursor-move">
         <Canvas camera={{ position: [0, 0, 9], fov: 45 }}>
           <CameraController />
-          <Environment preset="city" />
           
           <SceneShape 
             deformation={deformation}
