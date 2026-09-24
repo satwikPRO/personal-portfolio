@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, useSpring, useMotionValue, useTransform } from 'framer-motion';
+import { motion, useSpring, useMotionValue, useTransform, animate } from 'framer-motion';
 import { ExperimentShell } from '../components/ExperimentShell';
 import { LiquidGlass } from '../components/LiquidGlass';
 
@@ -25,28 +25,23 @@ export const MotionSystem: React.FC = () => {
 
   // Nodes for the spring network
   const constraintsRef = useRef<HTMLDivElement>(null);
-  const node1Ref = useRef<HTMLDivElement>(null);
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
-  // Apply spring physics to the motion values
+  // Apply spring physics to the motion values for the trailing elements
   const springConfig = { stiffness, damping, mass };
   const springX = useSpring(x, springConfig);
   const springY = useSpring(y, springConfig);
 
   // Monitor velocity
   useEffect(() => {
-    const unsubX = springX.on('change', () => {
-      const v = springX.getVelocity();
+    const unsubX = x.on('change', () => {
+      const v = x.getVelocity();
       setVelocity(Math.abs(v));
     });
     return () => unsubX();
-  }, [springX]);
-
-  // Center connection line
-  const centerX = useTransform(springX, (val) => val + 40);
-  const centerY = useTransform(springY, (val) => val + 40);
+  }, [x]);
 
   const hud = (
     <>
@@ -167,26 +162,42 @@ export const MotionSystem: React.FC = () => {
           <motion.line 
             x1="50%" 
             y1="50%" 
-            x2={useTransform(centerX, (val) => `calc(50% + ${val - 40}px)`)}
-            y2={useTransform(centerY, (val) => `calc(50% + ${val - 40}px)`)}
+            x2={useTransform(x, (val) => `calc(50% + ${val}px)`)}
+            y2={useTransform(y, (val) => `calc(50% + ${val}px)`)}
             stroke="rgba(249, 115, 22, 0.4)"
             strokeWidth="1"
             strokeDasharray="4 4"
           />
         </svg>
 
+        {/* Floating background nodes (Followers) */}
+        {[...Array(5)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-12 h-12 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm pointer-events-none flex items-center justify-center"
+            style={{
+              x: useTransform(springX, (val) => val * (0.8 - i * 0.15)),
+              y: useTransform(springY, (val) => val * (0.8 - i * 0.15)),
+              rotate: useTransform(springX, (val) => val * (0.05 + i * 0.05)),
+              scale: 1 - i * 0.15,
+              zIndex: 5 - i
+            }}
+          >
+            <div className="w-1 h-1 rounded-full bg-white/20" />
+          </motion.div>
+        ))}
+
         {/* Draggable Node */}
         <motion.div
-          ref={node1Ref}
           drag
           dragConstraints={constraintsRef}
-          dragElastic={1} // Allows over-dragging
-          onDragEnd={() => {
-            // Snap back to center using current spring config
-            x.set(0);
-            y.set(0);
+          dragElastic={0.2}
+          onDragEnd={(e, info) => {
+            // Animate back to center using the exact spring physics configured by the user
+            animate(x, 0, { type: "spring", stiffness, damping, mass, velocity: info.velocity.x });
+            animate(y, 0, { type: "spring", stiffness, damping, mass, velocity: info.velocity.y });
           }}
-          style={{ x: springX, y: springY, zIndex: 10 }}
+          style={{ x, y, zIndex: 10 }}
           whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
           className="absolute cursor-grab"
         >
@@ -194,20 +205,6 @@ export const MotionSystem: React.FC = () => {
             <div className="w-2 h-2 rounded-full bg-orange-400 group-hover:scale-150 transition-transform" />
           </LiquidGlass>
         </motion.div>
-
-        {/* Floating background nodes (Followers) */}
-        {[...Array(5)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-10 h-10 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm pointer-events-none"
-            style={{
-              x: useTransform(springX, (val) => val * (0.2 + i * 0.1)),
-              y: useTransform(springY, (val) => val * (0.2 + i * 0.1)),
-              left: `${30 + i * 10}%`,
-              top: `${20 + (i%3) * 20}%`,
-            }}
-          />
-        ))}
 
       </div>
     </ExperimentShell>
